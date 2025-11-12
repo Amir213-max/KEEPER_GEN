@@ -170,20 +170,53 @@ useEffect(() => {
 
     loadCountries();
   }, []);
+// 🟢 جلب السعر من SMSA API بناءً على الدولة ونوع الشحن
+async function fetchSmsaRate(countryCode, type = "normal") {
+  try {
+    const response = await fetch("/api/smsa/shipping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ countryCode, type }),
+    });
+
+    const data = await response.json();
+    if (data.success) {
+      console.log("✅ SMSA Shipping:", data);
+      return data.cost; // مثال: { cost: 35 }
+    } else {
+      console.warn("⚠️ SMSA API error:", data.error);
+      return 0;
+    }
+  } catch (err) {
+    console.error("❌ Failed to fetch SMSA rate:", err);
+    return 0;
+  }
+}
 
   // جلب تكاليف الشحن عند اختيار الدولة
   useEffect(() => {
     const fetchShipping = async () => {
       if (!selectedCountry) return;
       try {
-        const res = await graphqlClient.request(CALCULATE_SHIPPING, {
-          country_id: selectedCountry,
-        });
-        const shippingData = res.calculateShipping;
-        setShippingCosts({
-          normal: shippingData.normal_shipping?.cost || 0,
-          fast: shippingData.fast_shipping?.cost || 0,
-        });
+    const res = await graphqlClient.request(CALCULATE_SHIPPING, {
+  country_id: selectedCountry,
+});
+
+const shippingData = res.calculateShipping;
+
+// 🧠 جلب الكود الدولي للدولة
+const countryCode = shippingData.country.code;
+
+// 🟢 جلب السعر من SMSA API
+const smsaNormal = await fetchSmsaRate(countryCode, "normal");
+const smsaFast = await fetchSmsaRate(countryCode, "fast");
+
+// ✅ أولوية: SMSA ثم السيرفر
+setShippingCosts({
+  normal: smsaNormal || shippingData.normal_shipping?.cost || 0,
+  fast: smsaFast || shippingData.fast_shipping?.cost || 0,
+});
+
       } catch (err) {
         console.error("Error fetching shipping:", err);
         setShippingCosts({ normal: 0, fast: 0 });

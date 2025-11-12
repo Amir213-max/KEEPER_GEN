@@ -76,7 +76,7 @@ const handlePlaceOrder = async () => {
         currency: currency, // نفس العملة اللي اختارها المستخدم
         customer_email: customer.email,
         customer_phone: customer.phone,
-        redirect_url: `${window.location.origin}/payment-success`,
+        redirect_url: `${window.location.origin}/payment-verify`,
         webhook_url: `${window.location.origin}/api/tap-webhook`,
         published: true,
         shipping_address: {
@@ -103,8 +103,19 @@ const handlePlaceOrder = async () => {
     const tapResponse = res.createOrderWithTapPayment;
     console.log("Full Tap Response:", JSON.stringify(tapResponse, null, 2));
 
+    // ✅ Store order_id in localStorage before redirecting to Tap
+    if (tapResponse.order_id) {
+      localStorage.setItem("lastOrderId", tapResponse.order_id);
+      console.log("💾 Stored order ID in localStorage:", tapResponse.order_id);
+    }
+
     if (tapResponse.success && tapResponse.payment_url) {
-      window.location.href = tapResponse.payment_url;
+      // Append order_id to redirect URL so Tap can pass it back
+      const paymentUrl = new URL(tapResponse.payment_url);
+      if (tapResponse.order_id) {
+        paymentUrl.searchParams.set("order_id", tapResponse.order_id);
+      }
+      window.location.href = paymentUrl.toString();
     } else {
       let errorMessage = "Payment processing failed";
       if (tapResponse.error) errorMessage += ": " + tapResponse.error;

@@ -386,7 +386,7 @@ const handleAddToCart = async (productId) => {
                 return (
                   <motion.div key={item.id} layout transition={{ duration: 0.25, ease: "easeInOut" }} className="flex items-center justify-between bg-white shadow-sm p-3 hover:shadow-md transition">
                     <div className="flex items-center space-x-3">
-                      <img src={product.images?.[0] || "/no-img.png"} alt={product.name || "Product"} className="w-16 h-16 object-fill-fit border" />
+                      <img src={product.images?.[0] || "/no-img.png"} alt={product.name || "Product"} className="w-16 h-16 object-fill-fitgg border" />
                       <div>
                         <p className="font-semibold text-gray-800">{product.name || item.name || "Product"}</p>
                         <div className="flex items-center gap-2 mt-1">

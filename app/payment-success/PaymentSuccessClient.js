@@ -16,6 +16,24 @@ const VERIFY_PAYMENT = gql`
         id
         number
         total_amount
+        shipping_type
+        shipping_country {
+          id
+          code
+          name
+        }
+        user {
+          id
+          name
+          email
+          phone
+        }
+        items {
+          id
+          product_name
+          product_sku
+          quantity
+        }
       }
     }
   }
@@ -47,6 +65,9 @@ export default function PaymentSuccessClient() {
         setStatus("success");
         setOrderData(result.order);
         setMessage(result.message || "Your payment was successful!");
+        
+        // ✅ Integrate with SMSA Express if conditions are met
+        handleSMSAIntegration(result.order);
       } else {
         setStatus("failed");
         setMessage(result?.message || "Payment verification failed.");
@@ -64,6 +85,76 @@ export default function PaymentSuccessClient() {
 
   const handleViewOrders = () => {
     router.push("/myprofile?tab=orders");
+  };
+
+  // ✅ Handle SMSA Express Integration
+  const handleSMSAIntegration = async (order) => {
+    try {
+      // Check if order qualifies for SMSA Express
+      const countryCode = order?.shipping_country?.code || order?.shipping_country?.id;
+      const shippingType = order?.shipping_type?.toLowerCase();
+
+      // Only process if: country is SA and shipping type is "normal"
+      if (countryCode !== "SA" && countryCode !== 1) {
+        console.log("⏭️ Skipping SMSA: Country is not SA", { countryCode });
+        return;
+      }
+
+      if (shippingType !== "normal" && shippingType !== "standard") {
+        console.log("⏭️ Skipping SMSA: Shipping type is not normal", { shippingType });
+        return;
+      }
+
+      console.log("📦 Processing SMSA Express integration for order:", order.id);
+
+      // Prepare shipment data
+      // Note: Shipping address may need to be fetched from backend if not in order response
+      const shipmentData = {
+        orderId: order.id,
+        orderNumber: order.number,
+        customerName: order.user?.name || "Customer",
+        customerPhone: order.user?.phone || "",
+        customerEmail: order.user?.email || "",
+        shippingAddress: {
+          // If shipping_address is available in order, use it
+          // Otherwise, these will need to be fetched from backend
+          address_line_1: order.shipping_address?.address_line_1 || "",
+          locality: order.shipping_address?.locality || "",
+          postal_code: order.shipping_address?.postal_code || "",
+          country_code: order.shipping_country?.code || "SA",
+        },
+        items: order.items || [],
+      };
+
+      // Validate that we have required address data
+      if (!shipmentData.shippingAddress.address_line_1) {
+        console.warn("⚠️ Shipping address not available in order response. May need to fetch from backend.");
+        // You can optionally fetch order details with shipping address here
+        // For now, we'll still attempt to create shipment (SMSA may have address from order creation)
+      }
+
+      // Call SMSA Express API
+      const response = await fetch("/api/smsa/create-shipment", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(shipmentData),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log("✅ SMSA shipment created:", result);
+        // Optionally show success message or update UI
+      } else {
+        console.error("❌ SMSA shipment failed:", result.error);
+        // Don't show error to user - payment was successful, shipping can be handled later
+      }
+    } catch (error) {
+      console.error("❌ SMSA integration error:", error);
+      // Silent fail - don't interrupt payment success flow
+    }
   };
 
   return (

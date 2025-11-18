@@ -62,12 +62,9 @@ export const GET_PROFILE = gql`
       id
       name
       email
-      phone
-      date_of_birth
-      gender
-      avatar
-      is_active
-      email_verified_at
+      orders {
+        id
+      }
       created_at
       updated_at
     }
@@ -560,7 +557,7 @@ query GetOrders {
     video_thumbnail_url
     categories
     tier_prices
-    a
+    
     name
     name_without_brand
     url

@@ -1,4 +1,4 @@
-type User {
+ type User {
   id: ID!
   name: String!
   email: String!
@@ -645,8 +645,6 @@ type NotificationTypeCount {
      cart_id: ID!
      shipping_cost: Float
      shipping_type: String
-     total_amount: Float
-     currency:String
      shipping_country_id: ID
      shipping_address: AddressInput
      billing_address: AddressInput
@@ -654,11 +652,14 @@ type NotificationTypeCount {
      customer_phone: String
      redirect_url: String!
      webhook_url: String!
+     currency: String
+     total_amount: Float
+     vat_amount: Float
+     subtotal: Float
      tags: [String!]
      tracking_urls: [String!]
      published: Boolean
  }
- 
  input VerifyPaymentInput {
      order_id: ID!
  }
@@ -1339,11 +1340,10 @@ input CreateOrderFromCartInput {
  }
 
 type Query {
-
      users: [User!]! @all(model: "App\\Models\\User")
      user(id: ID! @eq): User @find(model: "App\\Models\\User")
      me: User @field(resolver: "App\\GraphQL\\Queries\\MeQuery")
-     profileByToken(token: String!): User @field(resolver: "App\\GraphQL\\Queries\\ProfileByTokenQuery")
+     profile: User @field(resolver: "App\\GraphQL\\Queries\\ProfileByTokenQuery")
  
      products(limit: Int, offset: Int): [Product!]! @field(resolver: "App\\GraphQL\\Queries\\ProductsQuery")
      productsWithCategories(limit: Int, offset: Int): [Product!]! @field(resolver: "App\\GraphQL\\Queries\\ProductsWithCategoriesQuery")

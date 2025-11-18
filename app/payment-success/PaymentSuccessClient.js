@@ -5,13 +5,15 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { graphqlClient } from "@/app/lib/graphqlClient";
 import { gql } from "graphql-request";
 import { CheckCircle, XCircle, Loader2, ShoppingBag, Home, Package } from "lucide-react";
+// TODO: REMOVE MOCK WHEN real verifyTapPayment starts working.
+import { mockVerifyTapPayment, isMockModeEnabled } from "@/app/lib/payments/mockVerifyTapPayment";
 
 const VERIFY_PAYMENT = gql`
-  mutation VerifyPayment($input: VerifyPaymentInput!) {
-    verifyTapPayment(input: $input) {
+ mutation VerifyPayment($input: VerifyTapPaymentInput!) {
+  verifyTapPayment(input: $input) {
       success
       message
-      tap_status
+      payment_status
       order {
         id
         number
@@ -54,9 +56,17 @@ export default function PaymentSuccessClient() {
 
   const verifyPayment = async () => {
     try {
-      const res = await graphqlClient.request(VERIFY_PAYMENT, {
-        input: { order_id: orderId },
-      });
+      // TODO: REMOVE MOCK WHEN real verifyTapPayment starts working.
+      let res;
+      if (isMockModeEnabled(searchParams)) {
+        // Use mock instead of real API call
+        res = await mockVerifyTapPayment(orderId);
+      } else {
+        // Real API call
+        res = await graphqlClient.request(VERIFY_PAYMENT, {
+          input: { order_id: orderId },
+        });
+      }
 
       console.log("Payment verification:", res);
       const result = res?.verifyTapPayment;
@@ -107,30 +117,40 @@ export default function PaymentSuccessClient() {
 
       console.log("📦 Processing SMSA Express integration for order:", order.id);
 
-      // Prepare shipment data
-      // Note: Shipping address may need to be fetched from backend if not in order response
+      // ✅ جلب بيانات customer من localStorage بدلاً من order
+      const savedCustomerData = localStorage.getItem("smsa_customer_data");
+      let customerData = null;
+      
+      if (savedCustomerData) {
+        try {
+          customerData = JSON.parse(savedCustomerData);
+          console.log("✅ Using customer data from localStorage:", customerData);
+        } catch (e) {
+          console.error("❌ Failed to parse customer data from localStorage:", e);
+        }
+      }
+
+      // ✅ استخدام البيانات من localStorage أو fallback إلى order
       const shipmentData = {
         orderId: order.id,
         orderNumber: order.number,
-        customerName: order.user?.name || "Customer",
-        customerPhone: order.user?.phone || "",
-        customerEmail: order.user?.email || "",
+        customerName: customerData 
+          ? `${customerData.first_name} ${customerData.last_name}`.trim()
+          : order.user?.name || "Customer",
+        customerPhone: customerData?.phone || order.user?.phone || "",
+        customerEmail: customerData?.email || order.user?.email || "",
         shippingAddress: {
-          // If shipping_address is available in order, use it
-          // Otherwise, these will need to be fetched from backend
-          address_line_1: order.shipping_address?.address_line_1 || "",
-          locality: order.shipping_address?.locality || "",
-          postal_code: order.shipping_address?.postal_code || "",
-          country_code: order.shipping_country?.code || "SA",
+          address_line_1: customerData?.address || order.shipping_address?.address_line_1 || "",
+          locality: customerData?.city || order.shipping_address?.locality || "",
+          postal_code: customerData?.zip || order.shipping_address?.postal_code || "",
+          country_code: customerData?.country_code || order.shipping_country?.code || "SA",
         },
         items: order.items || [],
       };
 
       // Validate that we have required address data
       if (!shipmentData.shippingAddress.address_line_1) {
-        console.warn("⚠️ Shipping address not available in order response. May need to fetch from backend.");
-        // You can optionally fetch order details with shipping address here
-        // For now, we'll still attempt to create shipment (SMSA may have address from order creation)
+        console.warn("⚠️ Shipping address not available. Using data from localStorage or order.");
       }
 
       // Call SMSA Express API
@@ -146,7 +166,9 @@ export default function PaymentSuccessClient() {
 
       if (result.success) {
         console.log("✅ SMSA shipment created:", result);
-        // Optionally show success message or update UI
+        // ✅ حذف البيانات من localStorage بعد الاستخدام الناجح
+        localStorage.removeItem("smsa_customer_data");
+        console.log("🗑️ Removed customer data from localStorage after successful SMSA integration");
       } else {
         console.error("❌ SMSA shipment failed:", result.error);
         // Don't show error to user - payment was successful, shipping can be handled later

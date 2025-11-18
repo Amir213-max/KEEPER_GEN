@@ -19,18 +19,12 @@ import {
 } from "lucide-react";
 
 const VERIFY_PAYMENT = gql`
-  mutation VerifyPayment($input: VerifyPaymentInput!) {
-    verifyTapPayment(input: $input) {
+mutation VerifyPayment($input: VerifyTapPaymentInput!) {
+  verifyTapPayment(input: $input) {
       success
       message
-      tap_status
-      payment {
-        id
-        amount
-        currency
-        status
-        transaction_id
-      }
+      payment_status
+    
       order {
         id
         number
@@ -42,11 +36,7 @@ const VERIFY_PAYMENT = gql`
         shipping_cost
         shipping_type
         created_at
-        shipping_country {
-          id
-          code
-          name
-        }
+      
         user {
           id
           name
@@ -73,13 +63,6 @@ export default function PaymentVerifyClient() {
   // Try multiple possible parameter names that Tap might use
   const orderId = 
     searchParams.get("order_id") || 
-    searchParams.get("orderId") || 
-    searchParams.get("order") ||
-    searchParams.get("id") ||
-    searchParams.get("tap_id") ||
-    searchParams.get("charge_id") ||
-    searchParams.get("reference") ||
-    searchParams.get("reference_id") ||
     null;
 
   const [status, setStatus] = useState("verifying");
@@ -182,7 +165,9 @@ export default function PaymentVerifyClient() {
   const handleSMSAIntegration = async (order) => {
     try {
       // Check if order qualifies for SMSA Express
-      const countryCode = order?.shipping_country?.code || order?.shipping_country?.id;
+      // const countryCode = order?.shipping_country?.code || order?.shipping_country?.id;
+const countryCode = "SA";
+      
       const shippingType = order?.shipping_type?.toLowerCase();
 
       // Only process if: country is SA and shipping type is "normal"
@@ -199,18 +184,33 @@ export default function PaymentVerifyClient() {
       setSmsaLoading(true);
       console.log("📦 Processing SMSA Express integration for order:", order.id);
 
-      // Prepare shipment data
+      // ✅ جلب بيانات customer من localStorage بدلاً من order
+      const savedCustomerData = localStorage.getItem("smsa_customer_data");
+      let customerData = null;
+      
+      if (savedCustomerData) {
+        try {
+          customerData = JSON.parse(savedCustomerData);
+          console.log("✅ Using customer data from localStorage:", customerData);
+        } catch (e) {
+          console.error("❌ Failed to parse customer data from localStorage:", e);
+        }
+      }
+
+      // ✅ استخدام البيانات من localStorage أو fallback إلى order
       const shipmentData = {
         orderId: order.id,
         orderNumber: order.number,
-        customerName: order.user?.name || "Customer",
-        customerPhone: order.user?.phone || "",
-        customerEmail: order.user?.email || "",
+        customerName: customerData 
+          ? `${customerData.first_name} ${customerData.last_name}`.trim()
+          : order.user?.name || "Customer",
+        customerPhone: customerData?.phone || order.user?.phone || "",
+        customerEmail: customerData?.email || order.user?.email || "",
         shippingAddress: {
-          address_line_1: order.shipping_address?.address_line_1 || "",
-          locality: order.shipping_address?.locality || "",
-          postal_code: order.shipping_address?.postal_code || "",
-          country_code: order.shipping_country?.code || "SA",
+          address_line_1: customerData?.address || order.shipping_address?.address_line_1 || "",
+          locality: customerData?.city || order.shipping_address?.locality || "",
+          postal_code: customerData?.zip || order.shipping_address?.postal_code || "",
+          country_code: customerData?.country_code || order.shipping_country?.code || "SA",
         },
         items: order.items || [],
       };
@@ -229,6 +229,10 @@ export default function PaymentVerifyClient() {
       if (result.success) {
         console.log("✅ SMSA shipment created:", result);
         setSmsaData(result);
+        
+        // ✅ حذف البيانات من localStorage بعد الاستخدام الناجح
+        localStorage.removeItem("smsa_customer_data");
+        console.log("🗑️ Removed customer data from localStorage after successful SMSA integration");
         
         // Redirect to shipping details page after a short delay
         setTimeout(() => {
@@ -569,4 +573,5 @@ export default function PaymentVerifyClient() {
     </div>
   );
 }
+
 

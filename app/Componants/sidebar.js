@@ -12,6 +12,7 @@ import CartSidebar from "./CartSidebar";
 import Image from "next/image";
 import { useChat } from "../contexts/ChatContext";
 import { useTranslation } from "../contexts/TranslationContext";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Sidebar({ isOpen, setIsOpen, onSelectCategory, isRTL = false }) {
   const [categories, setCategories] = useState([]);
@@ -19,7 +20,8 @@ export default function Sidebar({ isOpen, setIsOpen, onSelectCategory, isRTL = f
   const [openParentId, setOpenParentId] = useState(null);
   const router = useRouter();
   const { openChat } = useChat();
- const { t } = useTranslation();
+  const { t } = useTranslation();
+  const { user, logout } = useAuth();
  
   useEffect(() => {
     const fetchCategories = async () => {
@@ -116,42 +118,70 @@ export default function Sidebar({ isOpen, setIsOpen, onSelectCategory, isRTL = f
               />
 
               {/* أيقونات أسفل الستارة */}
-              <div className={`mt-auto pt-4 border-t border-neutral-700 flex ${isRTL ? "flex-row-reverse items-center w-full justify-center gap-6" : "justify-between gap-4"} items-center w-full px-3`}>
-                {/* Logo */}
-                <Link href="/">
-                  <Image
-                    src="https://static-assets.keepersport.net/dist/82d4dde2fe42e8e4fbfc.svg"
-                    alt="LOGO"
-                    width={30}
-                    height={30}
-                    className="object-contain"
-                    priority
-                  />
-                </Link>
+              <div className={`mt-auto pt-4 border-t border-neutral-700 flex flex-col gap-3`}>
+                {/* الصف الأول: الأيقونات */}
+                <div className={`flex ${isRTL ? "flex-row-reverse justify-center" : "justify-between"} items-center w-full px-3 gap-4`}>
+                  {/* Logo */}
+                  <Link href="/">
+                    <Image
+                      src="https://static-assets.keepersport.net/dist/82d4dde2fe42e8e4fbfc.svg"
+                      alt="LOGO"
+                      width={30}
+                      height={30}
+                      className="object-contain"
+                      priority
+                    />
+                  </Link>
 
-                {/* Chat */}
-                <button
-                  onClick={openChat}
-                  className="text-white hover:text-amber-400 transition-colors duration-200"
-                >
-                  <FaComments size={20} />
-                </button>
+                  {/* Chat */}
+                  <button
+                    onClick={openChat}
+                    className="text-white hover:text-amber-400 transition-colors duration-200"
+                  >
+                    <FaComments size={20} />
+                  </button>
 
-                {/* Cart */}
-                <button
-                  onClick={() => setCartOpen(true)}
-                  className="text-white hover:text-amber-400 transition-colors duration-200"
-                >
-                  <FaShoppingCart size={20} />
-                </button>
+                  {/* Cart */}
+                  <button
+                    onClick={() => setCartOpen(true)}
+                    className="text-white hover:text-amber-400 transition-colors duration-200"
+                  >
+                    <FaShoppingCart size={20} />
+                  </button>
 
-                {/* User */}
-                <Link
-                  href="/login"
-                  className="text-white hover:text-red-600 transition-colors duration-200"
-                >
-                  <FaUser size={20} />
-                </Link>
+                  {/* User Profile */}
+                  {user ? (
+                    <Link
+                      href="/myprofile"
+                      className="text-white hover:text-amber-400 transition-colors duration-200"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      <FaUser size={20} />
+                    </Link>
+                  ) : (
+                    <Link
+                      href="/login"
+                      className="text-white hover:text-amber-400 transition-colors duration-200"
+                    >
+                      <FaUser size={20} />
+                    </Link>
+                  )}
+                </div>
+
+                {/* الصف الثاني: زر Logout (فقط للمستخدمين المسجلين) */}
+                {user && (
+                  <div className="px-3">
+                    <button
+                      onClick={() => {
+                        logout();
+                        setIsOpen(false);
+                      }}
+                      className="w-full bg-black hover:bg-neutral-900 border border-neutral-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors duration-200 flex items-center justify-center gap-2"
+                    >
+                      <span>{t('Logout') || 'Logout'}</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           </>

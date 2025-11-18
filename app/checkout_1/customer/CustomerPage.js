@@ -57,6 +57,21 @@ const handlePlaceOrder = async () => {
   setLoading(true);
 
   try {
+    // ✅ حفظ بيانات customer في localStorage قبل إرسال الطلب
+    const customerData = {
+      first_name: customer.first_name,
+      last_name: customer.last_name,
+      email: customer.email,
+      phone: customer.phone,
+      address: customer.address,
+      city: customer.city || "Main",
+      zip: customer.zip || "0000",
+      country_code: String(shippingCountryId),
+    };
+    
+    localStorage.setItem("smsa_customer_data", JSON.stringify(customerData));
+    console.log("💾 Saved customer data to localStorage for SMSA:", customerData);
+
     // ✅ المبلغ بالعملة المختارة
     const totalInSelectedCurrency = convertPrice(total); // يحول المبلغ حسب العملة الحالية
     const amountInSmallestUnit = Math.round(totalInSelectedCurrency * 100); // Halala أو سنت
@@ -64,56 +79,129 @@ const handlePlaceOrder = async () => {
     console.log("Preparing order, amount in smallest unit:", amountInSmallestUnit);
     console.log("Selected currency:", currency);
 
-    const res = await graphqlClient.request(CREATE_ORDER_WITH_TAP_PAYMENT, {
-      input: {
-        cart_id: parseInt(cartId),
-        shipping_type: shippingType,
-        shipping_country_id: parseInt(shippingCountryId),
-        shipping_cost: convertPrice(shippingParam),
-        subtotal: parseFloat(convertPrice(subtotalParam).toFixed(2)),
-        vat_amount: parseFloat(convertPrice(taxAmount).toFixed(2)),
-        total_amount: parseFloat(totalInSelectedCurrency.toFixed(2)),
-        currency: currency, // نفس العملة اللي اختارها المستخدم
-        customer_email: customer.email,
-        customer_phone: customer.phone,
-        redirect_url: `${window.location.origin}/payment-verify`,
-        webhook_url: `${window.location.origin}/api/tap-webhook`,
-        published: true,
-        shipping_address: {
-          first_name: customer.first_name,
-          last_name: customer.last_name,
-          address_line_1: customer.address,
-          locality: customer.city || "Main",
-          address_line_2: "",
-          postal_code: customer.zip || "0000",
-          country_code: String(shippingCountryId),
-        },
-        billing_address: {
-          first_name: customer.first_name,
-          last_name: customer.last_name,
-          address_line_1: customer.address,
-          locality: customer.city || "Main",
-          address_line_2: "",
-          postal_code: customer.zip || "0000",
-          country_code: String(shippingCountryId),
-        },
+    // ✅ حفظ البيانات في متغير واحد لاستخدامها في CreateOrderWithTapPayment و SMSA
+    const orderInput = {
+      cart_id: parseInt(cartId),
+      shipping_type: shippingType,
+      shipping_country_id: parseInt(shippingCountryId),
+      shipping_cost: convertPrice(shippingParam),
+      subtotal: parseFloat(convertPrice(subtotalParam).toFixed(2)),
+      vat_amount: parseFloat(convertPrice(taxAmount).toFixed(2)),
+      total_amount: parseFloat(totalInSelectedCurrency.toFixed(2)),
+      currency: currency, // نفس العملة اللي اختارها المستخدم
+      customer_email: customer.email,
+      customer_phone: customer.phone,
+      redirect_url: `${window.location.origin}/payment-verify`,
+      webhook_url: `${window.location.origin}/api/tap-webhook`,
+      published: true,
+      shipping_address: {
+        first_name: customer.first_name,
+        last_name: customer.last_name,
+        address_line_1: customer.address,
+        locality: customer.city || "Main",
+        address_line_2: "",
+        postal_code: customer.zip || "0000",
+        country_code: String(shippingCountryId),
       },
+      billing_address: {
+        first_name: customer.first_name,
+        last_name: customer.last_name,
+        address_line_1: customer.address,
+        locality: customer.city || "Main",
+        address_line_2: "",
+        postal_code: customer.zip || "0000",
+        country_code: String(shippingCountryId),
+      },
+    };
+
+    // ✅ استخدام نفس البيانات لـ CreateOrderWithTapPayment
+    const res = await graphqlClient.request(CREATE_ORDER_WITH_TAP_PAYMENT, {
+      input: orderInput,
     });
 
     const tapResponse = res.createOrderWithTapPayment;
-    console.log("Full Tap Response:", JSON.stringify(tapResponse, null, 2));
+    
+    // ✅ عرض response من CreateOrderWithTapPayment
+    console.log("=".repeat(80));
+    console.log("📋 CreateOrderWithTapPayment Response:");
+    console.log("=".repeat(80));
+    console.log(JSON.stringify(tapResponse, null, 2));
+    console.log("=".repeat(80));
 
-    // ✅ Store order_id in localStorage before redirecting to Tap
-    if (tapResponse.order_id) {
-      localStorage.setItem("lastOrderId", tapResponse.order_id);
-      console.log("💾 Stored order ID in localStorage:", tapResponse.order_id);
+    // ✅ Extract order_id from CreateOrderWithTapPayment response
+    // Try multiple possible locations in the response
+    const orderId = 
+      tapResponse.order_id ||           // Direct order_id field
+      tapResponse.order?.id ||          // From order object
+      tapResponse.id ||                 // Alternative field name
+      null;
+
+    if (orderId) {
+      // Store order_id in localStorage before redirecting to Tap
+      localStorage.setItem("lastOrderId", orderId.toString());
+      console.log("💾 Stored order ID in localStorage:", orderId);
+      
+      // Also log the order number if available
+      if (tapResponse.order?.number) {
+        console.log("📦 Order Number:", tapResponse.order.number);
+      }
+    } else {
+      console.error("❌ No order_id found in CreateOrderWithTapPayment response");
+      console.error("Response structure:", tapResponse);
+    }
+
+    // ✅ استخدام نفس البيانات تلقائياً لـ SMSA مع إضافة tags فقط
+    try {
+      console.log("📦 Creating SMSA Express shipping order...");
+      
+      // ✅ استخدام نفس orderInput مع إضافة tags و tracking_urls
+      const smsaOrderData = {
+        input: {
+          ...orderInput, // ✅ نسخ جميع البيانات تلقائياً
+          cart_id: cartId.toString(), // ✅ تحويل cart_id إلى string كما يتوقع SMSA
+          tags: ["smsa"], // ✅ إضافة tags فقط
+          tracking_urls: [], // ✅ إضافة tracking_urls
+        },
+      };
+
+      // ✅ عرض country_code الذي يتم إرساله إلى SMSA
+      console.log("=".repeat(80));
+      console.log("🌍 Country Code sent to SMSA:");
+      console.log("=".repeat(80));
+      console.log("📍 Shipping Country Code:", smsaOrderData.input.shipping_address?.country_code);
+      console.log("📍 Billing Country Code:", smsaOrderData.input.billing_address?.country_code);
+      console.log("📍 Shipping Country ID:", smsaOrderData.input.shipping_country_id);
+      console.log("=".repeat(80));
+      console.log("📦 Full SMSA Order Data:", JSON.stringify(smsaOrderData, null, 2));
+      console.log("=".repeat(80));
+
+      const smsaResponse = await fetch("/api/smsa/create-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(smsaOrderData),
+      });
+
+      const smsaResult = await smsaResponse.json();
+
+      if (smsaResult.success) {
+        console.log("✅ SMSA Express order created successfully:", smsaResult);
+      } else {
+        console.error("❌ SMSA Express order creation failed:", smsaResult.error);
+        // Don't block the payment flow if SMSA fails
+      }
+    } catch (smsaError) {
+      console.error("❌ SMSA Express integration error:", smsaError);
+      // Don't block the payment flow if SMSA fails
     }
 
     if (tapResponse.success && tapResponse.payment_url) {
       // Append order_id to redirect URL so Tap can pass it back
       const paymentUrl = new URL(tapResponse.payment_url);
-      if (tapResponse.order_id) {
-        paymentUrl.searchParams.set("order_id", tapResponse.order_id);
+      if (orderId) {
+        paymentUrl.searchParams.set("order_id", orderId.toString());
+        console.log("🔗 Added order_id to payment URL:", orderId);
       }
       window.location.href = paymentUrl.toString();
     } else {
